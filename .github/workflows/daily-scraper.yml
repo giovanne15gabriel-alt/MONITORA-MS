@@ -1,0 +1,73 @@
+name: Atualização Diária da Transparência de MS (00:00) & Deploy GitHub Pages
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  scrape-and-update:
+    name: 🤖 Executar Robô de Extração do TCE-MS & Portais
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clonar Repositório
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📦 Instalar Dependências
+        run: npm install --legacy-peer-deps
+
+      - name: 🚀 Executar Scraper Noturno (00:00 BRT)
+        run: npm run scrape:daily
+        env:
+          NODE_ENV: production
+          TCE_MS_PORTAL_URL: 'https://www.tce.ms.gov.br/portal-cidadao/'
+
+      - name: 📝 Commitar Dados Atualizados no Repositório
+        run: |
+          git config --local user.email "bot-transparencia@ms.gov.br"
+          git config --local user.name "Robô Cívico MS Transparente"
+          git status
+          if [ -n "$(git status --porcelain src/data/)" ]; then
+            git add src/data/
+            git commit -m "chore(data): atualização automática diária das contas públicas [skip ci]"
+            git push
+          else
+            echo "Nenhuma alteração nos balanços municipais hoje."
+          fi
+
+      - name: 🏗️ Compilar Aplicação para GitHub Pages
+        run: npm run build
+
+      - name: 📤 Fazer Upload do Artefato do GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  deploy:
+    name: 🌐 Publicar no GitHub Pages
+    needs: scrape-and-update
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Deploy para GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

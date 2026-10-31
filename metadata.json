@@ -1,0 +1,6 @@
+{
+  "name": "MS Transparente 3D",
+  "description": "Plataforma cívica interativa em 3D de transparência pública para os 79 municípios de Mato Grosso do Sul (MS), com dados do TCE-MS, IBGE, dívida ativa, prefeitos e gastos das Câmaras Municipais.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

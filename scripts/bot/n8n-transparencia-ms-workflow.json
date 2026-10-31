@@ -1,0 +1,249 @@
+{
+  "name": "Pipeline Noturna (00:00) - Transparência Municipal MS (TCE-MS & Câmaras)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger (00:00 Diário)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "id": "node-cron-schedule"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id_ibge, nome, portal_camara_url, portal_prefeitura_url FROM municipios ORDER BY populacao DESC;"
+      },
+      "name": "Buscar 79 Municípios (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [460, 300],
+      "id": "node-get-municipios",
+      "credentials": {
+        "postgres": {
+          "id": "supabase_ms_transparente",
+          "name": "Supabase / Postgres MS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://dadosabertos.tce.ms.gov.br/api/v1/prestacao-contas/{{$json.id_ibge}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "CivicTech-MS-n8n/1.0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "name": "API TCE-MS (Dívida & Orçamento)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 200],
+      "id": "node-tce-ms-http"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.portal_camara_url}}/transparencia/verbas-indenizatorias.pdf",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "name": "Download PDF Portal Câmara",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 420],
+      "id": "node-download-pdf-camara"
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": "Você é um auditor contábil cívico. Analise este demonstrativo de despesas da Câmara Municipal de Mato Grosso do Sul e extraia em formato JSON estrito uma lista de despesas de vereadores contendo: nome_vereador, partido, categoria_despesa, valor_reais, fornecedor_cnpj, numero_documento.",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "name": "Claude / Gemini IA: OCR & Leitura de PDFs",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [920, 420],
+      "id": "node-ai-pdf-parser"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "financas_anuais",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "municipio_ibge": "={{$node[\"Buscar 79 Municípios (Postgres)\"].json.id_ibge}}",
+            "ano_exercicio": 2025,
+            "divida_ativa": "={{$json.divida_ativa_bruta}}",
+            "divida_consolidada": "={{$json.divida_consolidada_liquida}}",
+            "receita_realizada": "={{$json.receita_arrecadada}}",
+            "despesa_executada": "={{$json.despesa_liquidada}}",
+            "indice_transparencia_tce": "={{$json.nota_transparencia}}",
+            "data_consolidacao_tce": "={{$now.format('YYYY-MM-DD')}}"
+          }
+        }
+      },
+      "name": "Upsert Finanças (Supabase/Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1160, 200],
+      "id": "node-upsert-financas"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "gastos_gabinete",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        }
+      },
+      "name": "Upsert Gastos de Gabinete",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1160, 420],
+      "id": "node-upsert-vereadores"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipios_mapa_3d;"
+      },
+      "name": "Atualizar Cache do Mapa 3D",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1400, 300],
+      "id": "node-refresh-view"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (00:00 Diário)": {
+      "main": [
+        [
+          {
+            "node": "Buscar 79 Municípios (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar 79 Municípios (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "API TCE-MS (Dívida & Orçamento)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download PDF Portal Câmara",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API TCE-MS (Dívida & Orçamento)": {
+      "main": [
+        [
+          {
+            "node": "Upsert Finanças (Supabase/Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF Portal Câmara": {
+      "main": [
+        [
+          {
+            "node": "Claude / Gemini IA: OCR & Leitura de PDFs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude / Gemini IA: OCR & Leitura de PDFs": {
+      "main": [
+        [
+          {
+            "node": "Upsert Gastos de Gabinete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Finanças (Supabase/Postgres)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Cache do Mapa 3D",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Gastos de Gabinete": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Cache do Mapa 3D",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

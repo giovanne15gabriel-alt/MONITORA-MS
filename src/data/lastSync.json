@@ -1,0 +1,12 @@
+{
+  "dataExecucao": "2026-10-31T09:15:05.077Z",
+  "status": "SUCESSO",
+  "municipiosVerificados": 79,
+  "orgaosFiscalizados": [
+    "TCE-MS (Tribunal de Contas do Estado)",
+    "Governo do Estado de MS (SEFAZ-MS)",
+    "ALEMS (Assembleia Legislativa)",
+    "Câmara dos Deputados (Bancada MS)"
+  ],
+  "observacao": "Balanços e folhas consolidadas com sucesso para o GitHub Pages."
+}
